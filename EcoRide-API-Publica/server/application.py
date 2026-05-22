@@ -641,6 +641,10 @@ def seed():
         print(f"🛴  {len(patinetes)} patinetes de ejemplo creados.")
 
 
+if db_available:
+    seed()
+
+
 # ================================================================
 #  ARRANQUE
 # ================================================================
@@ -649,10 +653,6 @@ if __name__ == "__main__":
     print("=" * 55)
     print("  🛴  EcoRide API  —  Iniciando...")
     print("=" * 55)
-    if db_available:
-        seed()
-    else:
-        print("⚠️  MongoDB no disponible. La API arrancará sin seed y devolverá 503 en rutas dependientes de BD.")
     print(f"\n  Servidor escuchando en  http://0.0.0.0:{port}")
     print(f"  Prueba en el navegador:  http://localhost:{port}/\n")
     app.run(host="0.0.0.0", port=port)
