@@ -1,0 +1,1 @@
+-r EcoRide-API-Publica/requirements.txt
