@@ -45,6 +45,8 @@ app.config["JWT_HEADER_TYPE"]         = "Bearer"
 
 jwt = JWTManager(app)
 
+db_available = True
+
 
 # ================================================================
 #  CONEXIÓN A MONGODB
@@ -61,18 +63,23 @@ try:
     db = mongo_client[DB_NAME]
     print(f"✅  Conexión exitosa → base de datos: '{DB_NAME}'\n")
 except (ConnectionFailure, ServerSelectionTimeoutError) as exc:
+    db_available = False
+    db = None
+    col_users = None
+    col_vehicles = None
+    col_rentals = None
     print(f"\n❌  ERROR: No se pudo conectar a MongoDB.")
     print(f"    Detalle: {exc}")
     print(f"    Solución:")
     print(f"      · Si usas MongoDB local, asegúrate de que 'mongod' está corriendo.")
     print(f"      · Si usas Atlas, revisa usuario, contraseña y que tu IP esté en Network Access.")
     print(f"      · URI actual: {MONGO_URI}\n")
-    raise SystemExit(1)
 
 # Colecciones
-col_users    = db["users"]
-col_vehicles = db["vehicles"]
-col_rentals  = db["rentals"]
+if db_available:
+    col_users    = db["users"]
+    col_vehicles = db["vehicles"]
+    col_rentals  = db["rentals"]
 
 # Estados válidos de un patinete
 VEHICLE_STATES = ("disponible", "en_uso", "mantenimiento")
@@ -119,6 +126,15 @@ def bad_request(msg: str, code: int = 400):
 def ok(data: dict, code: int = 200):
     data["ok"] = True
     return jsonify(data), code
+
+
+def db_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not db_available:
+            return bad_request("Servicio temporalmente no disponible. MongoDB no está accesible.", 503)
+        return fn(*args, **kwargs)
+    return wrapper
 
 
 def admin_required(fn):
@@ -190,6 +206,7 @@ def health():
 # ================================================================
 
 @app.route("/auth/register", methods=["POST"])
+@db_required
 def register():
     """
     POST /auth/register
@@ -236,6 +253,7 @@ def register():
 
 
 @app.route("/auth/login", methods=["POST"])
+@db_required
 def login():
     """
     POST /auth/login
@@ -280,6 +298,7 @@ def login():
 # ================================================================
 
 @app.route("/vehicles", methods=["GET"])
+@db_required
 @jwt_required()
 def list_vehicles():
     """
@@ -300,6 +319,7 @@ def list_vehicles():
 
 
 @app.route("/vehicles/<vehicle_id>", methods=["GET"])
+@db_required
 @jwt_required()
 def get_vehicle(vehicle_id):
     """GET /vehicles/<id>"""
@@ -315,6 +335,7 @@ def get_vehicle(vehicle_id):
 
 
 @app.route("/vehicles", methods=["POST"])
+@db_required
 @admin_required
 def create_vehicle():
     """
@@ -356,6 +377,7 @@ def create_vehicle():
 
 
 @app.route("/vehicles/<vehicle_id>", methods=["PUT"])
+@db_required
 @admin_required
 def update_vehicle(vehicle_id):
     """
@@ -384,6 +406,7 @@ def update_vehicle(vehicle_id):
 
 
 @app.route("/vehicles/<vehicle_id>", methods=["DELETE"])
+@db_required
 @admin_required
 def delete_vehicle(vehicle_id):
     """DELETE /vehicles/<id>  [Solo admin]"""
@@ -407,6 +430,7 @@ def delete_vehicle(vehicle_id):
 # ================================================================
 
 @app.route("/rentals/start", methods=["POST"])
+@db_required
 @jwt_required()
 def start_rental():
     """
@@ -457,6 +481,7 @@ def start_rental():
 
 
 @app.route("/rentals/end/<rental_id>", methods=["PUT"])
+@db_required
 @jwt_required()
 def end_rental(rental_id):
     """PUT /rentals/end/<rental_id>  — Finaliza tu alquiler activo."""
@@ -501,6 +526,7 @@ def end_rental(rental_id):
 
 
 @app.route("/rentals/active", methods=["GET"])
+@db_required
 @jwt_required()
 def active_rental():
     """GET /rentals/active — Tu alquiler activo."""
@@ -518,6 +544,7 @@ def active_rental():
 
 
 @app.route("/rentals/my-history", methods=["GET"])
+@db_required
 @jwt_required()
 def my_history():
     """GET /rentals/my-history — Tu historial completo de alquileres."""
@@ -527,6 +554,7 @@ def my_history():
 
 
 @app.route("/rentals/all", methods=["GET"])
+@db_required
 @admin_required
 def all_rentals():
     """GET /rentals/all  [Solo admin] — Todos los alquileres del sistema."""
@@ -541,6 +569,7 @@ def all_rentals():
 # ================================================================
 
 @app.route("/users/me", methods=["GET"])
+@db_required
 @jwt_required()
 def my_profile():
     """GET /users/me — Tu perfil."""
@@ -552,6 +581,7 @@ def my_profile():
 
 
 @app.route("/users", methods=["GET"])
+@db_required
 @admin_required
 def list_users():
     """GET /users  [Solo admin] — Lista todos los usuarios."""
@@ -560,6 +590,7 @@ def list_users():
 
 
 @app.route("/users/<user_id>/toggle", methods=["PUT"])
+@db_required
 @admin_required
 def toggle_user(user_id):
     """PUT /users/<id>/toggle  [Solo admin] — Activa o desactiva una cuenta."""
@@ -618,7 +649,10 @@ if __name__ == "__main__":
     print("=" * 55)
     print("  🛴  EcoRide API  —  Iniciando...")
     print("=" * 55)
-    seed()
+    if db_available:
+        seed()
+    else:
+        print("⚠️  MongoDB no disponible. La API arrancará sin seed y devolverá 503 en rutas dependientes de BD.")
     print(f"\n  Servidor escuchando en  http://0.0.0.0:{port}")
     print(f"  Prueba en el navegador:  http://localhost:{port}/\n")
     app.run(host="0.0.0.0", port=port)
