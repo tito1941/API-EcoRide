@@ -1,0 +1,13 @@
+
+🔌  Conectando a MongoDB en: mongodb://localhost:27017/
+✅  Conexión exitosa → base de datos: 'ecoride_db'
+
+=======================================================
+  🛴  EcoRide API  —  Iniciando...
+=======================================================
+
+  Servidor escuchando en  http://0.0.0.0:5000
+  Prueba en el navegador:  http://localhost:5000/
+
+ * Serving Flask app 'application'
+ * Debug mode: off
