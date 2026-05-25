@@ -5,13 +5,15 @@
 ╚══════════════════════════════════════════════════════════╝
 """
 
+import imghdr
 import os
 import sys
+import uuid
 import bcrypt
 from datetime import datetime, timedelta
 from functools import wraps
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, url_for
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
@@ -23,6 +25,7 @@ from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from bson import ObjectId
 from bson.errors import InvalidId
+from werkzeug.utils import secure_filename
 
 # En Windows, la salida por defecto puede ser cp1252 y fallar con emojis.
 try:
@@ -36,6 +39,8 @@ except Exception:
 #  INICIALIZACIÓN DE LA APP
 # ================================================================
 app = Flask(__name__)
+
+PROFILE_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads", "profiles")
 
 app.config["JWT_SECRET_KEY"]          = os.environ.get("JWT_SECRET_KEY", "ecoride-dev-secret-2025")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=8)
@@ -126,6 +131,47 @@ def bad_request(msg: str, code: int = 400):
 def ok(data: dict, code: int = 200):
     data["ok"] = True
     return jsonify(data), code
+
+
+def user_response(user: dict | None) -> dict | None:
+    if not user:
+        return None
+    payload = to_json(dict(user))
+    profile_picture = payload.get("profile_picture")
+    if profile_picture:
+        payload["profilePicture"] = url_for("static", filename=profile_picture, _external=True)
+    else:
+        payload["profilePicture"] = None
+    return payload
+
+
+def is_valid_image_upload(uploaded_file) -> tuple[bool, str | None]:
+    if not uploaded_file or not uploaded_file.filename:
+        return False, None
+
+    filename = secure_filename(uploaded_file.filename)
+    if not filename:
+        return False, None
+
+    content = uploaded_file.read()
+    uploaded_file.seek(0)
+
+    if not content:
+        return False, None
+
+    image_kind = imghdr.what(None, h=content)
+    if image_kind not in {"jpeg", "png", "gif", "webp", "bmp", "tiff"}:
+        return False, None
+
+    extension_map = {
+        "jpeg": ".jpg",
+        "png": ".png",
+        "gif": ".gif",
+        "webp": ".webp",
+        "bmp": ".bmp",
+        "tiff": ".tiff",
+    }
+    return True, extension_map[image_kind]
 
 
 def db_required(fn):
@@ -577,7 +623,74 @@ def my_profile():
     user = col_users.find_one({"_id": oid}, {"password": 0})
     if not user:
         return bad_request("Usuario no encontrado.", 404)
-    return ok({"user": to_json(user)})
+    return ok({"user": user_response(user)})
+
+
+@app.route("/users/me", methods=["PUT"])
+@db_required
+@jwt_required()
+def update_my_profile():
+    """PUT /users/me — Actualiza datos básicos del perfil."""
+    oid = parse_oid(get_jwt_identity())
+    user = col_users.find_one({"_id": oid})
+    if not user:
+        return bad_request("Usuario no encontrado.", 404)
+
+    data = request.get_json(silent=True) or {}
+    updates = {}
+
+    if "username" in data:
+        username = str(data.get("username", "")).strip()
+        if not username:
+            return bad_request("El campo 'username' no puede estar vacío.")
+        if username != user.get("username") and col_users.find_one({"username": username, "_id": {"$ne": oid}}):
+            return bad_request("Ese nombre de usuario ya está en uso.")
+        updates["username"] = username
+
+    if "email" in data:
+        email = str(data.get("email", "")).strip().lower()
+        if not email:
+            return bad_request("El campo 'email' no puede estar vacío.")
+        if email != user.get("email") and col_users.find_one({"email": email, "_id": {"$ne": oid}}):
+            return bad_request("Ya existe una cuenta con ese email.")
+        updates["email"] = email
+
+    if not updates:
+        return bad_request("No se proporcionaron campos válidos para actualizar.")
+
+    col_users.update_one({"_id": oid}, {"$set": updates})
+    updated_user = col_users.find_one({"_id": oid}, {"password": 0})
+    return ok({"user": user_response(updated_user)})
+
+
+@app.route("/auth/profile/picture", methods=["POST"])
+@db_required
+@jwt_required()
+def upload_profile_picture():
+    """POST /auth/profile/picture — Sube la foto de perfil como multipart field 'picture'."""
+    oid = parse_oid(get_jwt_identity())
+    user = col_users.find_one({"_id": oid})
+    if not user:
+        return bad_request("Usuario no encontrado.", 404)
+
+    picture = request.files.get("picture")
+    is_valid, extension = is_valid_image_upload(picture)
+    if not is_valid or not extension:
+        return bad_request("El archivo enviado debe ser una imagen válida.")
+
+    os.makedirs(PROFILE_UPLOAD_FOLDER, exist_ok=True)
+
+    unique_filename = f"{uuid.uuid4().hex}{extension}"
+    relative_path = os.path.join("uploads", "profiles", unique_filename).replace("\\", "/")
+    absolute_path = os.path.join(PROFILE_UPLOAD_FOLDER, unique_filename)
+
+    with open(absolute_path, "wb") as image_file:
+        image_file.write(picture.read())
+
+    col_users.update_one({"_id": oid}, {"$set": {"profile_picture": relative_path}})
+    updated_user = col_users.find_one({"_id": oid}, {"password": 0})
+
+    return ok({"user": user_response(updated_user)})
 
 
 @app.route("/users", methods=["GET"])
