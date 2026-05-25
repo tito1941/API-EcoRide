@@ -5,7 +5,6 @@
 ╚══════════════════════════════════════════════════════════╝
 """
 
-import imghdr
 import os
 import sys
 import uuid
@@ -159,19 +158,20 @@ def is_valid_image_upload(uploaded_file) -> tuple[bool, str | None]:
     if not content:
         return False, None
 
-    image_kind = imghdr.what(None, h=content)
-    if image_kind not in {"jpeg", "png", "gif", "webp", "bmp", "tiff"}:
-        return False, None
+    if content.startswith(b"\xff\xd8\xff"):
+        return True, ".jpg"
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return True, ".png"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return True, ".gif"
+    if len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return True, ".webp"
+    if content.startswith(b"BM"):
+        return True, ".bmp"
+    if content.startswith((b"II*\x00", b"MM\x00*")):
+        return True, ".tiff"
 
-    extension_map = {
-        "jpeg": ".jpg",
-        "png": ".png",
-        "gif": ".gif",
-        "webp": ".webp",
-        "bmp": ".bmp",
-        "tiff": ".tiff",
-    }
-    return True, extension_map[image_kind]
+    return False, None
 
 
 def db_required(fn):
