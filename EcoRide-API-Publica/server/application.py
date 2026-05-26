@@ -781,6 +781,22 @@ def seed():
             {"model": "Pure Air Pro",     "battery": 70, "location": "Atocha",         "price_per_min": 0.12, "status": "disponible"},
             {"model": "Cecotec Bongo S4", "battery": 45, "location": "Gran Vía",       "price_per_min": 0.10, "status": "mantenimiento"},
             {"model": "NIU KQi3 Pro",     "battery": 90, "location": "Retiro",         "price_per_min": 0.20, "status": "disponible"},
+            {"model": "Xiaomi Essential", "battery": 88, "location": "Chamartín",      "price_per_min": 0.14, "status": "disponible"},
+            {"model": "Segway F25E",      "battery": 76, "location": "Moncloa",        "price_per_min": 0.16, "status": "disponible"},
+            {"model": "Cecotec Bongo Y65", "battery": 64, "location": "Lavapiés",       "price_per_min": 0.11, "status": "disponible"},
+            {"model": "SmartGyro Ziro",    "battery": 58, "location": "Malasaña",       "price_per_min": 0.13, "status": "mantenimiento"},
+            {"model": "Hiboy S2 Pro",      "battery": 91, "location": "La Latina",      "price_per_min": 0.19, "status": "disponible"},
+            {"model": "Razor E Prime",     "battery": 67, "location": "Arganzuela",     "price_per_min": 0.15, "status": "disponible"},
+            {"model": "Ninebot ES2",       "battery": 73, "location": "Cuzco",          "price_per_min": 0.17, "status": "disponible"},
+            {"model": "Cecotec Bongo Z",   "battery": 49, "location": "Usera",          "price_per_min": 0.10, "status": "mantenimiento"},
+            {"model": "Okai Neon",         "battery": 84, "location": "O'Donnell",      "price_per_min": 0.18, "status": "disponible"},
+            {"model": "EverCross EV10K",   "battery": 62, "location": "Serrano",        "price_per_min": 0.12, "status": "disponible"},
+            {"model": "Razor Power Core",  "battery": 55, "location": "Avenida América", "price_per_min": 0.09, "status": "disponible"},
+            {"model": "Xiaomi 4 Pro",      "battery": 97, "location": "Sol",            "price_per_min": 0.21, "status": "disponible"},
+            {"model": "Segway D18E",       "battery": 79, "location": "Nuevos Ministerios", "price_per_min": 0.16, "status": "disponible"},
+            {"model": "Cecotec Bongo Z4",  "battery": 46, "location": "Legazpi",        "price_per_min": 0.10, "status": "mantenimiento"},
+            {"model": "NIU KQi2 Pro",      "battery": 86, "location": "Príncipe Pío",   "price_per_min": 0.18, "status": "disponible"},
+            {"model": "SmartGyro X2",      "battery": 68, "location": "Ventas",         "price_per_min": 0.14, "status": "disponible"},
         ]
         for p in patinetes:
             latitude, longitude = random_madrid_coordinates()
