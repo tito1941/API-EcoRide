@@ -8,11 +8,12 @@
 import os
 import sys
 import uuid
+import random
 import bcrypt
 from datetime import datetime, timedelta
 from functools import wraps
 
-from flask import Flask, request, jsonify, url_for
+from flask import Flask, request, jsonify
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
@@ -37,7 +38,7 @@ except Exception:
 # ================================================================
 #  INICIALIZACIÓN DE LA APP
 # ================================================================
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 
 PROFILE_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads", "profiles")
 
@@ -136,11 +137,20 @@ def user_response(user: dict | None) -> dict | None:
     if not user:
         return None
     payload = to_json(dict(user))
-    profile_picture = payload.get("profile_picture")
-    if profile_picture:
-        payload["profilePicture"] = url_for("static", filename=profile_picture, _external=True)
-    else:
-        payload["profilePicture"] = None
+    payload["profile_picture"] = payload.get("profile_picture") or None
+    return payload
+
+
+def random_madrid_coordinates() -> tuple[float, float]:
+    latitude = round(random.uniform(40.41, 40.45), 6)
+    longitude = round(random.uniform(-3.75, -3.70), 6)
+    return latitude, longitude
+
+
+def normalize_vehicle(vehicle: dict) -> dict:
+    payload = to_json(vehicle)
+    payload["latitude"] = float(payload.get("latitude", 0.0))
+    payload["longitude"] = float(payload.get("longitude", 0.0))
     return payload
 
 
@@ -360,8 +370,8 @@ def list_vehicles():
         # Los usuarios normales SOLO ven los disponibles
         query = {"status": "disponible"}
 
-    vehicles = [to_json(v) for v in col_vehicles.find(query)]
-    return ok({"vehicles": vehicles, "total": len(vehicles)})
+    vehicles = [normalize_vehicle(v) for v in col_vehicles.find(query)]
+    return ok({"vehicles": vehicles})
 
 
 @app.route("/vehicles/<vehicle_id>", methods=["GET"])
@@ -377,7 +387,7 @@ def get_vehicle(vehicle_id):
     if not vehicle:
         return bad_request("Vehículo no encontrado.", 404)
 
-    return ok({"vehicle": to_json(vehicle)})
+    return ok({"vehicle": normalize_vehicle(vehicle)})
 
 
 @app.route("/vehicles", methods=["POST"])
@@ -410,11 +420,22 @@ def create_vehicle():
     if price_per_min <= 0:
         return bad_request("El precio por minuto debe ser positivo.")
 
+    if data.get("latitude") is None or data.get("longitude") is None:
+        latitude, longitude = random_madrid_coordinates()
+    else:
+        try:
+            latitude = float(data["latitude"])
+            longitude = float(data["longitude"])
+        except (ValueError, TypeError):
+            return bad_request("'latitude' y 'longitude' deben ser numéricos.")
+
     vehicle = {
         "model"        : str(data["model"]).strip(),
         "battery"      : battery,
         "location"     : str(data["location"]).strip(),
         "price_per_min": price_per_min,
+        "latitude"     : latitude,
+        "longitude"    : longitude,
         "status"       : "disponible",
         "created_at"   : datetime.utcnow().isoformat(),
     }
@@ -438,7 +459,7 @@ def update_vehicle(vehicle_id):
         return bad_request("Vehículo no encontrado.", 404)
 
     data    = request.get_json(silent=True) or {}
-    allowed = {"model", "battery", "location", "price_per_min", "status"}
+    allowed = {"model", "battery", "location", "price_per_min", "status", "latitude", "longitude"}
     updates = {k: v for k, v in data.items() if k in allowed}
 
     if not updates:
@@ -446,6 +467,18 @@ def update_vehicle(vehicle_id):
 
     if "status" in updates and updates["status"] not in VEHICLE_STATES:
         return bad_request(f"Estado inválido. Valores permitidos: {VEHICLE_STATES}")
+
+    if "latitude" in updates:
+        try:
+            updates["latitude"] = float(updates["latitude"])
+        except (ValueError, TypeError):
+            return bad_request("'latitude' debe ser numérico.")
+
+    if "longitude" in updates:
+        try:
+            updates["longitude"] = float(updates["longitude"])
+        except (ValueError, TypeError):
+            return bad_request("'longitude' debe ser numérico.")
 
     col_vehicles.update_one({"_id": oid}, {"$set": updates})
     return ok({"message": "Vehículo actualizado correctamente."})
@@ -735,6 +768,7 @@ def seed():
             "password"  : hashed,
             "role"      : "admin",
             "active"    : True,
+            "profile_picture": None,
             "created_at": datetime.utcnow().isoformat(),
         })
         print("🔑  Admin creado  →  admin@ecoride.com  /  Admin1234!")
@@ -749,13 +783,34 @@ def seed():
             {"model": "NIU KQi3 Pro",     "battery": 90, "location": "Retiro",         "price_per_min": 0.20, "status": "disponible"},
         ]
         for p in patinetes:
+            latitude, longitude = random_madrid_coordinates()
+            p["latitude"] = latitude
+            p["longitude"] = longitude
             p["created_at"] = datetime.utcnow().isoformat()
         col_vehicles.insert_many(patinetes)
         print(f"🛴  {len(patinetes)} patinetes de ejemplo creados.")
 
 
+def update_existing_vehicle_coordinates():
+    """Asigna coordenadas de prueba en Madrid a vehículos sin lat/lon."""
+    updates = 0
+    for vehicle in col_vehicles.find({}):
+        missing_lat = "latitude" not in vehicle or vehicle.get("latitude") is None
+        missing_lon = "longitude" not in vehicle or vehicle.get("longitude") is None
+        if missing_lat or missing_lon:
+            latitude, longitude = random_madrid_coordinates()
+            col_vehicles.update_one(
+                {"_id": vehicle["_id"]},
+                {"$set": {"latitude": latitude, "longitude": longitude}},
+            )
+            updates += 1
+    if updates:
+        print(f"📍  Vehículos actualizados con coordenadas: {updates}")
+
+
 if db_available:
     seed()
+    update_existing_vehicle_coordinates()
 
 
 # ================================================================
